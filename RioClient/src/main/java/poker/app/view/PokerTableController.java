@@ -8,18 +8,29 @@ import java.util.ResourceBundle;
 import java.util.UUID;
 
 import javafx.animation.FadeTransition;
+import javafx.animation.ParallelTransition;
+import javafx.animation.RotateTransition;
+import javafx.animation.SequentialTransition;
+import javafx.animation.TranslateTransition;
+import javafx.application.Platform;
 import javafx.event.ActionEvent;
+import javafx.event.EventHandler;
 import javafx.fxml.FXML;
 import javafx.fxml.Initializable;
 import javafx.geometry.Bounds;
+import javafx.geometry.Point2D;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
+import javafx.scene.layout.AnchorPane;
 import javafx.scene.layout.BorderPane;
+
 import javafx.scene.layout.HBox;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.Circle;
 import javafx.util.Duration;
 import poker.app.MainApp;
 import pokerBase.Action;
@@ -29,6 +40,7 @@ import pokerBase.GamePlay;
 import pokerBase.Hand;
 import pokerBase.HandScore;
 import pokerBase.Player;
+import pokerBase.Rule;
 import pokerBase.Table;
 import pokerEnums.eAction;
 import pokerEnums.eCardDestination;
@@ -46,6 +58,9 @@ public class PokerTableController implements Initializable {
 
 	public PokerTableController() {
 	}
+
+	@FXML
+	private AnchorPane mainAnchorPane;
 
 	@FXML
 	private Label lblWinningPlayer;
@@ -74,12 +89,13 @@ public class PokerTableController implements Initializable {
 	private BorderPane OuterBorderPane;
 
 	@FXML
-	private Label lblNumberOfPlayers;
-	@FXML
 	private TextArea txtPlayerArea;
 
 	@FXML
 	private Button btnStartGame;
+	@FXML
+	private Button btnDeal;
+
 	@FXML
 	private ToggleButton btnPos1SitLeave;
 	@FXML
@@ -111,6 +127,10 @@ public class PokerTableController implements Initializable {
 	private HBox hboxP4Cards;
 	@FXML
 	private HBox hboxCommunity;
+
+	private int[] iCurrentCard = { 0, 0, 0, 0 };
+
+	Point2D pntCardDeck = null;
 
 	@Override
 	public void initialize(URL location, ResourceBundle resources) {
@@ -207,6 +227,12 @@ public class PokerTableController implements Initializable {
 		}
 	}
 
+	/**
+	 * Return the HBox of player cards based on iPosition
+	 * 
+	 * @param iPosition
+	 * @return
+	 */
 	private HBox getCardHBox(int iPosition) {
 		switch (iPosition) {
 		case 0:
@@ -225,6 +251,12 @@ public class PokerTableController implements Initializable {
 
 	}
 
+	/**
+	 * Handle_TableState sets the table state of the game, who's sitting in what
+	 * position the Player's name in the label
+	 * 
+	 * @param HubPokerTable
+	 */
 	public void Handle_TableState(Table HubPokerTable) {
 
 		lblPlayerPos1.setText("");
@@ -233,16 +265,16 @@ public class PokerTableController implements Initializable {
 		lblPlayerPos4.setText("");
 		boolean bSeated = false;
 
-		for (int a = 1; a < 5; a++) {
-			Player p = HubPokerTable.getPlayerByPosition(a);
+		for (int iPlayerPos = 1; iPlayerPos < 5; iPlayerPos++) {
+			Player p = HubPokerTable.getPlayerByPosition(iPlayerPos);
 			if (p != null) {
-				getPlayerLabel(a).setText(p.getPlayerName());
+				getPlayerLabel(iPlayerPos).setText(p.getPlayerName());
 
 				if (p.getPlayerID().equals(mainApp.getPlayer().getPlayerID())) {
-					getSitLeave(a).setText("Leave");
+					getSitLeave(iPlayerPos).setText("Leave");
 					bSeated = true;
 				} else {
-					getSitLeave(a).setVisible(false);
+					getSitLeave(iPlayerPos).setVisible(false);
 				}
 			}
 		}
@@ -250,21 +282,20 @@ public class PokerTableController implements Initializable {
 		// Note: Players have been seated, set the Sit/Leave text
 		// based on players already seated.
 
-		for (int a = 1; a < 5; a++) {
+		for (int iPlayerPos = 1; iPlayerPos < 5; iPlayerPos++) {
 
-			if (getPlayerLabel(a).getText() == "") {
+			if (getPlayerLabel(iPlayerPos).getText() == "") {
 				if (bSeated) {
-					getSitLeave(a).setVisible(false);
+					getSitLeave(iPlayerPos).setVisible(false);
 				} else {
-					getSitLeave(a).setVisible(true);
-					getSitLeave(a).setText("Sit");
+					getSitLeave(iPlayerPos).setVisible(true);
+					getSitLeave(iPlayerPos).setText("Sit");
 				}
 			}
 		}
 	}
 
 	public void Handle_GameState(GamePlay HubPokerGame) {
-		// TODO: Deal the cards to the client(s)
 
 		GamePlay.StateOfGamePlay(HubPokerGame);
 
@@ -276,15 +307,38 @@ public class PokerTableController implements Initializable {
 			hboxP3Cards.getChildren().clear();
 			hboxP4Cards.getChildren().clear();
 			hboxCommunity.getChildren().clear();
+			for (int i = 0; i < iCurrentCard.length; i++) {
+				iCurrentCard[i] = 0;
+			}
+
+			// Deal out five placeholders
+			for (int iPos = 0; iPos < 5; iPos++) {
+				for (int iCard = 0; iCard < 5; iCard++) {
+					this.getCardHBox(iPos).getChildren().add(BuildImageView(-1));
+				}
+			}
+
+			hBoxDeck.getChildren().clear();
+			hBoxDeck.getChildren().add(BuildImageView(-2));
 			lblWinningPlayer.setText("");
 			lblWinningHand.setText("");
+
+			ImageView imgvDealerDeck = (ImageView) hBoxDeck.getChildren().get(0);
+			Bounds bndCardDeck = imgvDealerDeck.localToScene(imgvDealerDeck.getBoundsInLocal());
+			pntCardDeck = new Point2D(bndCardDeck.getMinX(), bndCardDeck.getMinY());
+			System.out.println("Card is at (x,y): " + pntCardDeck.getX() + " " + pntCardDeck.getY());
+
+			Circle c = new Circle(pntCardDeck.getX(), pntCardDeck.getY() - 35, 5);
+			c.setFill(Color.YELLOW);
+			mainAnchorPane.getChildren().add(c);
+
 		}
 
 		System.out.println("State of game: " + HubPokerGame.geteGameState());
 		CardDraw cd = HubPokerGame.getRule().GetDrawCard(eDrawCnt);
 
 		ImageView ivDealtCard = null;
-		
+
 		Hand hcheck = HubPokerGame.getPlayerHand(mainApp.getPlayer());
 		for (Card c : hcheck.getCardsInHand()) {
 			System.out.println(c.geteRank() + " " + c.geteSuit());
@@ -299,39 +353,47 @@ public class PokerTableController implements Initializable {
 					Hand h = HubPokerGame.getPlayerHand(p);
 					ArrayList<Card> cardsDrawn = h.GetCardsDrawn(eDrawCnt, HubPokerGame.getRule().GetGame(),
 							eCardDestination.Player);
+
 					for (Card c : cardsDrawn) {
+						String strImagePath;
+						int iCardNbr;
 						if (p.getPlayerID().equals(mainApp.getPlayer().getPlayerID())) {
-							this.getCardHBox(p.getiPlayerPosition()).getChildren().add(BuildImage(c.getiCardNbr()));
-							
-							System.out.println("HBox");
-							HBox hb = this.getCardHBox(p.getiPlayerPosition());
-							Bounds bndCardDealt2 = hb.localToScene(hb.getBoundsInLocal());
-							System.out.println("x:" + bndCardDealt2.getMinX());
-							System.out.println("y:" + bndCardDealt2.getMinY());	
-							
-							int iCnt = 0;
-							for (Object o: this.getCardHBox(p.getiPlayerPosition()).getChildren())
-							{
-								System.out.println("ImageView : " + iCnt++);
-								ImageView iv  = (ImageView)o;
-								Bounds bndCardDealt = iv.localToScene(iv.getBoundsInLocal());
-								System.out.println("x:" + bndCardDealt.getMinX());
-								System.out.println("y:" + bndCardDealt.getMinY());								
-							}
-							
-							
-							//ivDealtCard = (ImageView)this.getCardHBox(p.getiPlayerPosition()).getChildren().get(this.getCardHBox(p.getiPlayerPosition()).getChildren().size() -1);
-							
-
-
-							
-							
-							
-							
+							strImagePath = BuildImagePath(c.getiCardNbr());
+							iCardNbr =c.getiCardNbr();
 						} else {
-							this.getCardHBox(p.getiPlayerPosition()).getChildren().add(BuildImage(0));
-							ivDealtCard = (ImageView)this.getCardHBox(p.getiPlayerPosition()).getChildren().get(this.getCardHBox(p.getiPlayerPosition()).getChildren().size() -1);							
+							strImagePath = BuildImagePath(0);
+							iCardNbr = 0;
 						}
+
+						Platform.runLater(() -> {
+
+							ImageView ivCurrentCard = (ImageView) this.getCardHBox(p.getiPlayerPosition()).getChildren()
+									.get(iCurrentCard[p.getiPlayerPosition()]);
+							ivCurrentCard.setImage(BuildImage(c.getiCardNbr()));
+
+							Bounds bndCurrentCard = ivCurrentCard.localToScene(ivCurrentCard.getBoundsInLocal());
+							Point2D pntCurrentCard = new Point2D(bndCurrentCard.getMinX(),
+									bndCurrentCard.getMinY() - 35);
+							SequentialTransition ST = CalculateTransition(ivCurrentCard,
+									strImagePath, pntCurrentCard, pntCardDeck, iCardNbr);
+							ST.play();
+							iCurrentCard[p.getiPlayerPosition()]++;
+						});
+
+						// }
+						/*
+						 * else {
+						 * this.getCardHBox(p.getiPlayerPosition()).getChildren(
+						 * ).add(BuildImageView(0));
+						 * 
+						 * ivDealtCard = (ImageView)
+						 * this.getCardHBox(p.getiPlayerPosition()).getChildren(
+						 * ) .get(this.getCardHBox(p.getiPlayerPosition()).
+						 * getChildren().size() - 1);
+						 * 
+						 * 
+						 * }
+						 */
 					}
 				}
 			} else if (cd.getCardDestination() == eCardDestination.Community) {
@@ -340,11 +402,11 @@ public class PokerTableController implements Initializable {
 				ArrayList<Card> cardsDrawn = h.GetCardsDrawn(eDrawCnt, HubPokerGame.getRule().GetGame(),
 						eCardDestination.Community);
 				for (Card c : cardsDrawn) {
-					this.getCardHBox(0).getChildren().add(BuildImage(c.getiCardNbr()));
-					ivDealtCard = (ImageView)this.getCardHBox(0).getChildren().get(this.getCardHBox(0).getChildren().size() -1);
+					this.getCardHBox(0).getChildren().add(BuildImageView(c.getiCardNbr()));
+					ivDealtCard = (ImageView) this.getCardHBox(0).getChildren()
+							.get(this.getCardHBox(0).getChildren().size() - 1);
 				}
 			}
-			
 
 		}
 
@@ -360,18 +422,49 @@ public class PokerTableController implements Initializable {
 		}
 	}
 
-	private ImageView BuildImage(int iCardNbr) {
+	/**
+	 * BuildImageView - Return an ImageView with a card image based on iCardNbr
+	 * 
+	 * @param iCardNbr
+	 * @return
+	 */
+	private ImageView BuildImageView(int iCardNbr) {
+
+		ImageView i1 = new ImageView(BuildImage(iCardNbr));
+		return i1;
+	}
+
+	/**
+	 * BuildImage = Build Image based on iCardNbr
+	 * 
+	 * @param iCardNbr
+	 * @return
+	 */
+	private Image BuildImage(int iCardNbr) {
+
+		return new Image(getClass().getResourceAsStream(BuildImagePath(iCardNbr)), 72, 96, false, true);
+	}
+
+	private String BuildImagePath(int iCardNbr) {
 		String strImgPath;
-		if (iCardNbr == 0) {
+		if (iCardNbr == -2) {
+			strImgPath = "/img/b2fh.png";
+		} else if (iCardNbr == -1) {
+			strImgPath = "/img/card_placeholder.png";
+		} else if (iCardNbr == 0) {
 			strImgPath = "/img/b2fv.png";
 		} else {
 			strImgPath = "/img/" + iCardNbr + ".png";
 		}
 
-		ImageView i1 = new ImageView(new Image(getClass().getResourceAsStream(strImgPath), 75, 75, true, true));
-		return i1;
+		return strImgPath;
 	}
 
+	/**
+	 * btnStart_Click - Do this action when the 'Start' button is pressed.
+	 * 
+	 * @param event
+	 */
 	@FXML
 	void btnStart_Click(ActionEvent event) {
 		// Start the Game
@@ -380,6 +473,15 @@ public class PokerTableController implements Initializable {
 		// figure out which game is selected in the menu
 		eGame gme = eGame.getGame(Integer.parseInt(mainApp.getRuleName().replace("PokerGame", "")));
 
+		// Get the rule to figure out placeholder cards.
+		// Rule rle = new Rule(gme);
+
+		for (int iPlayerNbr = 0; iPlayerNbr < 5; iPlayerNbr++) {
+			for (int iCard = 0; iCard < 5; iCard++) {
+				getCardHBox(iPlayerNbr).getChildren().add(BuildImageView(-1));
+			}
+		}
+
 		// Set the gme in the action
 		act.seteGame(gme);
 
@@ -387,6 +489,11 @@ public class PokerTableController implements Initializable {
 		mainApp.messageSend(act);
 	}
 
+	/**
+	 * btnDeal_Click - Do this action when the 'Deal' button is pressed.
+	 * 
+	 * @param event
+	 */
 	@FXML
 	void btnDeal_Click(ActionEvent event) {
 
@@ -447,4 +554,104 @@ public class PokerTableController implements Initializable {
 		ft.play();
 	}
 
+	private SequentialTransition CalculateTransition(ImageView ivPlayerCardImageView, String strImage,
+			Point2D pntCardDealt, Point2D pntCardDeck, int iCardDrawn) {
+
+		// Add a sequential transition to the card (move, rotate)
+		SequentialTransition transMoveRotCard = createSequentialTransition(pntCardDeck, pntCardDealt);
+
+		// Add a parallel transition to the card (fade in/fade out).
+		final ParallelTransition transFadeCardInOut = createFadeTransition(ivPlayerCardImageView,
+				new Image(getClass().getResourceAsStream(strImage), 72, 96, false, true));
+
+		SequentialTransition transAllActions = new SequentialTransition();
+		transAllActions.getChildren().addAll(transMoveRotCard, transFadeCardInOut);
+
+		return transAllActions;
+	}
+
+	private SequentialTransition createSequentialTransition(final Point2D pntStartPoint, final Point2D pntEndPoint) {
+
+		ImageView imView = new ImageView(
+				new Image(getClass().getResourceAsStream("/img/b2fv.png"), 72, 96, false, true));
+
+		imView.setX(pntStartPoint.getX());
+		imView.setY(pntStartPoint.getY());
+
+		mainAnchorPane.getChildren().add(imView);
+
+		TranslateTransition translateTransition = new TranslateTransition(Duration.millis(300), imView);
+		translateTransition.setFromX(0);
+		translateTransition.setToX(pntEndPoint.getX() - pntStartPoint.getX());
+		translateTransition.setFromY(0);
+		translateTransition.setToY(pntEndPoint.getY() - pntStartPoint.getY());
+
+		translateTransition.setCycleCount(1);
+		translateTransition.setAutoReverse(false);
+
+		int rnd = randInt(1, 3);
+
+		RotateTransition rotateTransition = new RotateTransition(Duration.millis(150), imView);
+		rotateTransition.setByAngle(360F);
+		rotateTransition.setCycleCount(rnd);
+		rotateTransition.setAutoReverse(false);
+
+		ParallelTransition parallelTransition = new ParallelTransition();
+		parallelTransition.getChildren().addAll(translateTransition, rotateTransition);
+
+		SequentialTransition seqTrans = new SequentialTransition();
+		seqTrans.getChildren().addAll(parallelTransition);
+
+		final ImageView ivRemove = imView;
+		seqTrans.setOnFinished(new EventHandler<ActionEvent>() {
+
+			@Override
+			public void handle(ActionEvent arg0) {
+				mainAnchorPane.getChildren().remove(ivRemove);
+			}
+		});
+
+		return seqTrans;
+	}
+
+	private ParallelTransition createFadeTransition(final ImageView iv, final Image img) {
+
+		FadeTransition fadeOutTransition = new FadeTransition(Duration.seconds(.1), iv);
+		fadeOutTransition.setFromValue(1.0);
+		fadeOutTransition.setToValue(0.0);
+		fadeOutTransition.setOnFinished(new EventHandler<ActionEvent>() {
+
+			@Override
+			public void handle(ActionEvent arg0) {
+				iv.setImage(img);
+			}
+
+		});
+
+		FadeTransition fadeInTransition = new FadeTransition(Duration.seconds(.1), iv);
+		fadeInTransition.setFromValue(0.0);
+		fadeInTransition.setToValue(1.0);
+
+		/*
+		 * FadeTransition fadeFlyCare = FadeOutTransition(ivFlyCard);
+		 */
+
+		ParallelTransition parallelTransition = new ParallelTransition();
+		parallelTransition.getChildren().addAll(fadeOutTransition, fadeInTransition);
+
+		return parallelTransition;
+	}
+
+	/**
+	 * randInt - Create a random number
+	 * 
+	 * @param min
+	 * @param max
+	 * @return
+	 */
+	private static int randInt(int min, int max) {
+
+		return (int) (Math.random() * (min - max)) * -1;
+
+	}
 }

@@ -14,6 +14,7 @@ import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.event.EventHandler;
 import javafx.fxml.FXMLLoader;
+import javafx.geometry.Bounds;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.geometry.Rectangle2D;
@@ -23,6 +24,7 @@ import javafx.scene.control.Button;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.image.Image;
+import javafx.scene.layout.AnchorPane;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.layout.VBoxBuilder;
@@ -188,10 +190,14 @@ public class MainApp extends Application {
 			// Load person overview.
 			FXMLLoader loader = new FXMLLoader();
 			loader.setLocation(MainApp.class.getResource("view/PokerTable.fxml"));
-			BorderPane pokerOverview = (BorderPane) loader.load();
+			AnchorPane pokerOverview = (AnchorPane) loader.load();
 
 			// Set person overview into the center of root layout.
 			rootLayout.setCenter(pokerOverview);
+			
+/*			BorderPane pokerBorderPane = (BorderPane)pokerOverview.getChildren().get(0);						
+			AnchorPane.setRightAnchor(pokerBorderPane, 100.0);
+			AnchorPane.setTopAnchor(pokerBorderPane, 25.0);*/
 
 			// Give the controller access to the main app.
 			//PokerTableController controller = loader.getController();
